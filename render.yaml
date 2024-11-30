@@ -1,0 +1,11 @@
+# Exported from Render on 2024-11-30T06:02:34Z
+services:
+- type: web
+  name: PostPrueba
+  runtime: docker
+  repo: https://github.com/PilarLopez20/PostPrueba
+  plan: free
+  buildCommand: pip install -r requirements.txt
+  startCommand: gunicorn -w 4 -b 0.0.0.0:$PORT main:app
+  dockerfilePath: ./Dockerfile
+version: "1"
