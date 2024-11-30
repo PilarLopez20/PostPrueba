@@ -17,7 +17,7 @@ COPY . .
 RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
 
-# Exponer el puerto 5000
+# Exponer el puerto (Render lo asignará dinámicamente)
 EXPOSE 5000
 
 # Comando para iniciar la aplicación
