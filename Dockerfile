@@ -12,6 +12,9 @@ WORKDIR /main
 
 # Copiar archivos del proyecto
 COPY . .
+COPY model /main/model
+
+
 
 # Actualizar pip e instalar dependencias
 RUN pip install --upgrade pip
@@ -20,5 +23,5 @@ RUN pip install -r requirements.txt
 # Exponer el puerto (Render lo asignará dinámicamente)
 EXPOSE 5000
 
-# Comando para iniciar la aplicación
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "main:app"]
+CMD ["gunicorn", "--workers=1", "--timeout=120", "-b", "0.0.0.0:5000", "main:app"]
+
