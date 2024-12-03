@@ -1,90 +1,81 @@
-import tensorflow as tf
+import cv2
+import mediapipe as mp
 import numpy as np
 from flask import Flask, request, jsonify
-from PIL import Image
-import io
-import os
+from pose_analysis import POSE_LANDMARKS, analyze_pose, analyze_lateral, analyze_frontal, analyze_posterior
 
+# Inicializar la aplicación Flask
 app = Flask(__name__)
 
-# Define las clases generales (posturas)
-CLASSES_GENERALES = ["frontal", "posterior", "latDerecho", "latIzquierdo"]
+# Inicializar MediaPipe Pose
+mp_pose = mp.solutions.pose
 
-# Ruta del modelo TensorFlow Lite
-TFLITE_MODEL_PATH = "model/modelo_posturas_general.tflite"
-
-# Cargar el intérprete de TensorFlow Lite
-interpreter = tf.lite.Interpreter(model_path=TFLITE_MODEL_PATH)
-interpreter.allocate_tensors()
-
-# Obtener detalles de entrada y salida del modelo
-input_details = interpreter.get_input_details()
-output_details = interpreter.get_output_details()
-
-def procesar_imagen(imagen_bytes):
-    """
-    Procesa una imagen y la convierte en un vector plano con las dimensiones esperadas por el modelo.
-    """
-    try:
-        # Cargar la imagen
-        imagen = Image.open(io.BytesIO(imagen_bytes)).convert('RGB')
-
-        # Redimensionar la imagen (ajusta al tamaño esperado por tu pipeline)
-        imagen = imagen.resize((256, 256))
-
-        # Convertir la imagen a un numpy array y normalizar los valores
-        imagen_array = np.array(imagen, dtype=np.float32) / 255.0
-
-        # Aplanar la imagen
-        imagen_flatten = imagen_array.flatten()
-
-        # Ajustar las dimensiones a [1, 120] (si es lo que tu modelo espera)
-        if len(imagen_flatten) < 120:
-            imagen_flatten = np.pad(imagen_flatten, (0, 120 - len(imagen_flatten)), mode='constant')
-        elif len(imagen_flatten) > 120:
-            imagen_flatten = imagen_flatten[:120]
-
-        # Regresar el vector con la forma esperada
-        return np.expand_dims(imagen_flatten, axis=0)  # [1, 120]
-    except Exception as e:
-        raise ValueError(f"Error procesando la imagen: {str(e)}")
-
-
-@app.route('/', methods=['GET'])
+@app.route("/", methods=["GET"])
 def home():
     return jsonify({
-        'message': 'Servidor Flask funcionando correctamente',
-        'classes': CLASSES_GENERALES
+        "message": "Servidor Flask con MediaPipe funcionando correctamente",
+        "info": "Envía una imagen al endpoint /predict para obtener análisis de postura."
     })
 
-@app.route('/predict', methods=['POST'])
+@app.route("/predict", methods=["POST"])
 def predict():
     try:
-        if 'file' not in request.files:
-            return jsonify({'error': 'No se proporcionó ninguna imagen.'}), 400
+        if "file" not in request.files:
+            return jsonify({"error": "No se proporcionó ninguna imagen."}), 400
 
-        imagen = request.files['file'].read()
-        input_data = procesar_imagen(imagen)
+        # Leer la imagen enviada
+        image_file = request.files["file"].read()
+        np_image = np.array(bytearray(image_file), dtype=np.uint8)
+        image = cv2.imdecode(np_image, cv2.IMREAD_COLOR)
 
-        # Configurar los datos de entrada del intérprete
-        interpreter.set_tensor(input_details[0]['index'], input_data)
+        if image is None:
+            return jsonify({"error": "No se pudo procesar la imagen."}), 400
 
-        # Realizar la inferencia
-        interpreter.invoke()
+        # Convertir a RGB para MediaPipe
+        rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-        # Obtener los resultados de la predicción
-        output_data = interpreter.get_tensor(output_details[0]['index'])
-        predicted_class = np.argmax(output_data[0])
+        # Procesar la imagen con MediaPipe Pose
+        with mp_pose.Pose(static_image_mode=True, model_complexity=2) as pose:
+            results = pose.process(rgb_image)
 
-        # Traduce el índice a la clase general
-        predicted_posture = CLASSES_GENERALES[predicted_class]
+            if not results.pose_landmarks:
+                return jsonify({"error": "No se detectaron puntos clave en la imagen."}), 400
 
-        return jsonify({'prediction': predicted_posture})
+            # Obtener dimensiones de la imagen
+            image_height, image_width = rgb_image.shape[:2]
+
+            # Análisis de la pose
+            pose_type, validations = analyze_pose(
+                results.pose_landmarks, image_height, image_width
+            )
+
+            # Resultados adicionales según el tipo de pose
+            if "Lateral" in pose_type:
+                lateral_results = analyze_lateral(
+                    results.pose_landmarks, image_width, image_height
+                )
+                validations.update(lateral_results)
+            elif "Frontal" in pose_type:
+                frontal_results = analyze_frontal(
+                    results.pose_landmarks, image_height
+                )
+                validations.update(frontal_results)
+            elif "Posterior" in pose_type:
+                posterior_results = analyze_posterior(
+                    results.pose_landmarks, image_height, image_width
+                )
+                validations.update(posterior_results)
+
+            # Respuesta en formato JSON
+            response = {
+                "pose_type": pose_type,
+                "validations": validations,
+            }
+            return jsonify(response)
+
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return jsonify({"error": str(e)}), 500
 
 
-if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
-
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000, debug=False)

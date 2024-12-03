@@ -1,23 +1,26 @@
 # Base de Ubuntu
 FROM ubuntu:22.04
 
-# Instalar Python y pip
+
+# Instalar dependencias del sistema necesarias para OpenCV y MediaPipe
 RUN apt-get update && apt-get install -y \
-    python3 python3-pip && \
+    libgl1-mesa-glx libglib2.0-0 libsm6 libxrender1 libxext6 && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+# Instalar pip manualmente si no está incluido
+RUN apt-get update && apt-get install -y python3-pip
+
+# Establecer el directorio de trabajo
 # Establecer el directorio de trabajo
 WORKDIR /main
 
-# Copiar archivos del proyecto
-COPY . .
-COPY model /main/model
-
-
+# Copiar los archivos de requirements primero
+# Copiar todos los archivos del proyecto al contenedor
+COPY . /main
 
 # Actualizar pip e instalar dependencias
-RUN pip install --upgrade pip
+RUN python3 -m pip install --upgrade pip
 RUN pip install -r requirements.txt
 
 # Exponer el puerto (Render lo asignará dinámicamente)
