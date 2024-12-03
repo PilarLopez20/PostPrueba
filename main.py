@@ -3,6 +3,8 @@ import mediapipe as mp
 import numpy as np
 from flask import Flask, request, jsonify
 from pose_analysis import POSE_LANDMARKS, analyze_pose, analyze_lateral, analyze_frontal, analyze_posterior
+from PIL import Image
+import io
 
 # Inicializar la aplicación Flask
 app = Flask(__name__)
@@ -25,24 +27,28 @@ def predict():
 
         # Leer la imagen enviada
         image_file = request.files["file"].read()
-        np_image = np.array(bytearray(image_file), dtype=np.uint8)
-        image = cv2.imdecode(np_image, cv2.IMREAD_COLOR)
+        
+        # Convertir la imagen en un formato que OpenCV pueda procesar
+        pil_image = Image.open(io.BytesIO(image_file)).convert('RGB')
 
-        if image is None:
-            return jsonify({"error": "No se pudo procesar la imagen."}), 400
+        # Redimensionar la imagen a 256x256
+        pil_image = pil_image.resize((256, 256))
+        
+        # Convertir la imagen a un array de NumPy
+        np_image = np.array(pil_image)
 
-        # Convertir a RGB para MediaPipe
-        rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        # Convertir de RGB a BGR para usarlo con OpenCV y MediaPipe
+        image = cv2.cvtColor(np_image, cv2.COLOR_RGB2BGR)
 
         # Procesar la imagen con MediaPipe Pose
         with mp_pose.Pose(static_image_mode=True, model_complexity=2) as pose:
-            results = pose.process(rgb_image)
+            results = pose.process(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
 
             if not results.pose_landmarks:
                 return jsonify({"error": "No se detectaron puntos clave en la imagen."}), 400
 
             # Obtener dimensiones de la imagen
-            image_height, image_width = rgb_image.shape[:2]
+            image_height, image_width = 256, 256  # Ya sabemos que es 256x256
 
             # Análisis de la pose
             pose_type, validations = analyze_pose(
