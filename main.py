@@ -2,15 +2,18 @@ import cv2
 import mediapipe as mp
 import numpy as np
 from flask import Flask, request, jsonify
-from pose_analysis import POSE_LANDMARKS, analyze_pose, analyze_lateral, analyze_frontal, analyze_posterior
+from pose_analysis import (POSE_LANDMARKS, analyze_pose, analyze_lateral,analyze_frontal, analyze_posterior, detect_face
+)
 from PIL import Image
 import io
 
 # Inicializar la aplicación Flask
 app = Flask(__name__)
 
-# Inicializar MediaPipe Pose
+# Inicializar MediaPipe Pose y Face Detection
 mp_pose = mp.solutions.pose
+mp_face_detection = mp.solutions.face_detection
+face_detection = mp_face_detection.FaceDetection()
 
 @app.route("/", methods=["GET"])
 def home():
@@ -52,7 +55,7 @@ def predict():
 
             # Análisis de la pose
             pose_type, validations = analyze_pose(
-                results.pose_landmarks, image_height, image_width
+                results.pose_landmarks, image, image_height, image_width  # Se pasan los argumentos correctos
             )
 
             # Resultados adicionales según el tipo de pose

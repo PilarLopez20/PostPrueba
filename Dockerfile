@@ -12,16 +12,17 @@ RUN apt-get update && apt-get install -y \
 RUN apt-get update && apt-get install -y python3-pip
 
 # Establecer el directorio de trabajo
-# Establecer el directorio de trabajo
+
 WORKDIR /main
 
 # Copiar los archivos de requirements primero
 # Copiar todos los archivos del proyecto al contenedor
 COPY . /main
 
-# Actualizar pip e instalar dependencias
-RUN python3 -m pip install --upgrade pip
-RUN pip install -r requirements.txt
+# Actualizar pip e instalar dependencias críticas
+RUN python3 -m pip install --no-cache-dir --upgrade pip
+RUN pip install --no-cache-dir numpy scipy
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Exponer el puerto (Render lo asignará dinámicamente)
 EXPOSE 5000

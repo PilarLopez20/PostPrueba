@@ -1,4 +1,10 @@
 import math
+import mediapipe as mp
+import cv2
+
+# Inicializar la detección de rostros
+mp_face_detection = mp.solutions.face_detection
+face_detection = mp_face_detection.FaceDetection()
 
 # Índices de puntos clave en MediaPipe
 POSE_LANDMARKS = {
@@ -48,6 +54,54 @@ def classify_lumbar_angle(left_hip, right_hip, reference_point):
         return "Zona lumbar muy hundida"
 
 
+def detect_face(image):
+    """
+    Detecta si hay rostros visibles en una imagen.
+    Retorna True si se detecta un rostro, False de lo contrario.
+    """
+    results = face_detection.process(image)
+
+    # Depuración: imprimir resultados de detección
+    if results.detections:
+        print(f"Rostros detectados: {len(results.detections)}")
+        for detection in results.detections:
+            print(f"Confianza de detección: {detection.score[0]:.2f}")
+    else:
+        print("No se detectaron rostros.")
+
+    return results.detections is not None and len(results.detections) > 0
+
+
+
+
+def classify_pose(landmarks, image, image_width, image_height):
+    """
+    Clasifica la pose en el siguiente orden:
+    1. Posterior (si no se detecta un rostro).
+    2. Frontal (si se detecta un rostro y no es lateral).
+    3. Lateral (si la profundidad de los hombros indica una pose lateral).
+    """
+    # 1. Verificar si se detecta un rostro
+    if image is not None:
+        # Convertir la imagen a RGB para MediaPipe
+        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        face_detected = detect_face(image_rgb)
+
+        # Si no se detecta un rostro, clasificar como Posterior
+        if not face_detected:
+            return "Posterior"
+
+    # 2. Verificar si es lateral basándose en la profundidad (z)
+    left_shoulder = landmarks.landmark[POSE_LANDMARKS["left_shoulder"]]
+    right_shoulder = landmarks.landmark[POSE_LANDMARKS["right_shoulder"]]
+
+    if abs(left_shoulder.z - right_shoulder.z) >= 0.1:
+        return "Lateral Izquierdo" if left_shoulder.z > right_shoulder.z else "Lateral Derecho"
+
+    # 3. Si se detecta rostro y no es lateral, clasificar como Frontal
+    return "Frontal"
+
+
 def classify_dorsal_angle(left_shoulder, right_shoulder, reference_point):
     """Clasifica la región dorsal según el ángulo."""
     angle = calculate_angle(left_shoulder, right_shoulder, reference_point)
@@ -85,32 +139,6 @@ def analyze_lateral(landmarks, image_width, image_height):
 
     # Retornar resultados
     return {"lumbar": lumbar_label, "dorsal": dorsal_label}
-
-
-def classify_pose(landmarks):
-    """Clasifica la pose como frontal, posterior o lateral."""
-    left_shoulder = landmarks.landmark[POSE_LANDMARKS["left_shoulder"]]
-    right_shoulder = landmarks.landmark[POSE_LANDMARKS["right_shoulder"]]
-    
-    # Verificar si es lateral basándose en la profundidad (z)
-    if abs(left_shoulder.z - right_shoulder.z) >= 0.1:
-        return "Lateral Izquierdo" if left_shoulder.z > right_shoulder.z else "Lateral Derecho"
-
-    # Verificar si es frontal o posterior basándose en ojos y boca
-    left_eye = landmarks.landmark[POSE_LANDMARKS["left_eye"]]
-    right_eye = landmarks.landmark[POSE_LANDMARKS["right_eye"]]
-    mouth = landmarks.landmark[POSE_LANDMARKS["mouth"]]
-
-    # Si la visibilidad de ojos y boca es baja, es posterior
-    if (
-        left_eye.visibility < 1 or
-        right_eye.visibility < 1 or
-        mouth.visibility < 1
-    ):
-        return "Posterior"
-
-    # Si los puntos faciales son visibles, es frontal
-    return "Frontal"
 
 
 def analyze_column(landmarks, image_width):
@@ -233,15 +261,17 @@ def analyze_posterior(landmarks, image_height, image_width):
     return {"caderas": hip_label, "tobillos": ankle_label, "columna": column_label}
 
 
-def analyze_pose(landmarks, image_height, image_width):
-    """Analiza la pose según el tipo detectado."""
-    pose_type = classify_pose(landmarks)
+def analyze_pose(landmarks, image, image_height, image_width):
+    """
+    Analiza la pose según los landmarks detectados y las dimensiones de la imagen.
+    """
+    pose_type = classify_pose(landmarks, image, image_width, image_height)
 
     if "Lateral" in pose_type:
-        results = analyze_lateral(landmarks, image_width, image_height)  # Pasa los argumentos aquí
-    elif pose_type == "Frontal":
+        results = analyze_lateral(landmarks, image_width, image_height)
+    elif "Frontal" in pose_type:
         results = analyze_frontal(landmarks, image_height)
-    elif pose_type == "Posterior":
+    elif "Posterior" in pose_type:
         results = analyze_posterior(landmarks, image_height, image_width)
 
     return pose_type, results

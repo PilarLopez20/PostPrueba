@@ -7,3 +7,4 @@ opencv-contrib-python==4.10.0.84
 opencv-python==4.10.0.84
 mediapipe==0.10.18
 libclang==18.1.1
+
